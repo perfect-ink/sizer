@@ -23,6 +23,9 @@ name: Release
 on:
   release:
     types: [published]
+  # Pushing a tag like v1.5.1 also builds, and creates the release if needed.
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
@@ -52,13 +55,13 @@ jobs:
   release:
     runs-on: macos-26
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
       HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
       HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag || '' }}
+          ref: ${{ github.event.release.tag_name || inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
 
       - name: Version
         run: |
@@ -156,7 +159,12 @@ jobs:
         if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" dist/* --clobber
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$APP_NAME $VERSION" --generate-notes
+          fi
 
       - name: Rebuild perfectink.org
         if: env.TAG != ''

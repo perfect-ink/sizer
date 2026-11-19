@@ -1,6 +1,11 @@
 APP      := Sizer
 SRC      := $(wildcard Sources/*.swift)
 FLAGS    := -framework Cocoa -framework Carbon -framework ApplicationServices -framework ServiceManagement
+# Oldest macOS the app supports. Without an explicit -target, swiftc builds for the
+# build Mac's own macOS version, so a release built on a macOS 26 runner would
+# refuse to launch on anything older. Keep in sync with LSMinimumSystemVersion.
+MIN_MACOS := 12.0
+ARCHS     := arm64 x86_64
 
 BUILD_DIR := build
 DIST_DIR  := dist
@@ -36,7 +41,7 @@ $(DEV_BUNDLE): $(SRC) Info.plist $(ICON_ICNS)
 	@rm -rf $@
 	@mkdir -p $@/Contents/MacOS $@/Contents/Resources
 	@echo "→ Building (dev)…"
-	swiftc $(SRC) $(FLAGS) -o $@/Contents/MacOS/$(APP)
+	swiftc $(SRC) $(FLAGS) -target $(shell uname -m)-apple-macos$(MIN_MACOS) -o $@/Contents/MacOS/$(APP)
 	@cp Info.plist $@/Contents/Info.plist
 	@cp $(ICON_ICNS) $@/Contents/Resources/$(APP).icns
 	@echo "✓ $@"
@@ -46,7 +51,13 @@ build:
 	@rm -rf $(DIST_BUNDLE)
 	@mkdir -p $(DIST_BUNDLE)/Contents/MacOS $(DIST_BUNDLE)/Contents/Resources
 	@echo "→ Building (production)…"
-	swiftc $(SRC) $(FLAGS) -O -o $(DIST_BUNDLE)/Contents/MacOS/$(APP)
+	@# Universal binary: one slice per architecture, joined with lipo.
+	@set -e; for arch in $(ARCHS); do \
+		echo "  swiftc ($$arch, macOS $(MIN_MACOS)+)"; \
+		swiftc $(SRC) $(FLAGS) -O -target $$arch-apple-macos$(MIN_MACOS) -o $(DIST_DIR)/$(APP)-$$arch; \
+	done
+	lipo -create $(foreach arch,$(ARCHS),$(DIST_DIR)/$(APP)-$(arch)) -output $(DIST_BUNDLE)/Contents/MacOS/$(APP)
+	@rm -f $(foreach arch,$(ARCHS),$(DIST_DIR)/$(APP)-$(arch))
 	@cp Info.plist $(DIST_BUNDLE)/Contents/Info.plist
 	@cp $(ICON_ICNS) $(DIST_BUNDLE)/Contents/Resources/$(APP).icns
 	@echo "✓ $(DIST_BUNDLE)"
@@ -98,6 +109,8 @@ test:
 	@echo "✓ Tests passed"
 
 # Bump the patch version, commit (along with any pending changes), tag, and push.
+# The tag is v<version>, which makes the Release workflow build the app and
+# create the GitHub release with the .dmg attached.
 #   make bump                    1.4 -> 1.4.1 -> 1.4.2
 #   make bump MSG="Fix sizing"   custom commit message
 PLIST_BUDDY := /usr/libexec/PlistBuddy
@@ -109,12 +122,12 @@ bump:
 	min=$$(echo "$$cur" | cut -d. -f2); \
 	pat=$$(echo "$$cur" | cut -d. -f3); \
 	new="$$maj.$${min:-0}.$$(( $${pat:-0} + 1 ))"; \
-	if git rev-parse -q --verify "refs/tags/$$new" >/dev/null; then echo "Tag $$new already exists"; exit 1; fi; \
+	if git rev-parse -q --verify "refs/tags/v$$new" >/dev/null; then echo "Tag v$$new already exists"; exit 1; fi; \
 	echo "→ $$cur -> $$new"; \
 	$(PLIST_BUDDY) -c "Set :CFBundleShortVersionString $$new" Info.plist; \
 	git add -A; \
 	msg="$(MSG)"; [ -n "$$msg" ] || msg="Bump version to $$new"; \
 	git commit -m "$$msg"; \
-	git tag "$$new"; \
-	git push origin HEAD "$$new"; \
+	git tag "v$$new"; \
+	git push origin HEAD "v$$new"; \
 	echo "✓ Released $$new"

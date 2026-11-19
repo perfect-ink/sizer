@@ -12,16 +12,27 @@
 #   fastlane mac submit version:1.5.2 [build:42]   attach the build (latest processed one by default) and submit
 
 require "yaml"
+require "tmpdir"
 
 default_platform(:mac)
 
-METADATA_PATH    = "docs/app-store/metadata"
+LISTING_FILE     = File.expand_path("../docs/app-store/listing.yml", __dir__)
 SCREENSHOTS_PATH = "docs/app-store/screenshots"
 
-# App Review contact and notes, from one file. APP_REVIEW_PHONE (a secret in CI)
-# overrides the phone so it never has to be committed.
+# Apple's limits, checked before anything is sent so a long field fails here.
+LIMITS = { "name" => 30, "subtitle" => 30, "promotional_text" => 170, "keywords" => 100,
+           "description" => 4000, "release_notes" => 4000 }
+LOCALIZED = %w[name subtitle promotional_text description keywords release_notes
+               support_url marketing_url privacy_url]
+
+def listing
+  @listing ||= YAML.load_file(LISTING_FILE)
+end
+
+# App Review contact and notes. APP_REVIEW_PHONE (a secret in CI) overrides the
+# phone so it never has to be committed to the public repo.
 def review_information
-  review = YAML.load_file(File.expand_path("../docs/app-store/review.yml", __dir__))
+  review = listing["review"] || {}
   phone = ENV["APP_REVIEW_PHONE"].to_s.strip
   phone = review["phone"].to_s.strip if phone.empty?
   UI.important("No App Review phone number: set the APP_REVIEW_PHONE secret") if phone.empty?
@@ -35,19 +46,30 @@ def review_information
   }.reject { |_, v| v.is_a?(String) && v.empty? }
 end
 
+# Everything in docs/app-store/listing.yml, as deliver options.
 def listing_options(version)
-  {
+  locale = listing["locale"] || "en-US"
+  LIMITS.each do |key, max|
+    length = listing[key].to_s.strip.length
+    UI.user_error!("listing.yml #{key} is #{length} characters; App Store Connect allows #{max}") if length > max
+  end
+  text = LOCALIZED.to_h { |key| [key.to_sym, { locale => listing[key].to_s.strip }] }
+                  .reject { |_, v| v[locale].empty? }
+  text.merge(
     platform: "osx",
     app_version: version,
-    metadata_path: METADATA_PATH,
-    screenshots_path: SCREENSHOTS_PATH,
+    copyright: listing["copyright"].to_s.strip,
+    primary_category: listing["primary_category"].to_s.strip,
+    secondary_category: listing["secondary_category"].to_s.strip,
     app_review_information: review_information,
+    metadata_path: Dir.mktmpdir,          # everything comes from listing.yml, not a metadata folder
+    screenshots_path: SCREENSHOTS_PATH,
     overwrite_screenshots: true,
     skip_binary_upload: true,
     force: true,                          # no HTML preview prompt (CI)
     run_precheck_before_submit: false,    # precheck can't use an API key
     precheck_include_in_app_purchases: false,
-  }
+  )
 end
 
 platform :mac do

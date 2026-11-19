@@ -4,14 +4,13 @@ Everything App Store Connect asks for, ready to paste or to push with fastlane.
 
 | What | Where |
 |---|---|
-| Listing text (name, subtitle, promo, description, keywords, URLs, What's New) | `metadata/en-US/*.txt` |
-| Copyright and categories | `metadata/copyright.txt`, `metadata/primary_category.txt`, `metadata/secondary_category.txt` |
-| Notes and contact for App Review | `review.yml` (one file) |
+| Listing text (name, subtitle, promo, description, keywords, URLs, What's New), copyright, categories | `listing.yml` |
+| Notes and contact for App Review | `review:` in `listing.yml` |
 | Screenshots, 2880×1800 (six) | `screenshots/en-US/` (regenerate with `make screenshots`) |
-| Privacy policy | `../PRIVACY.md`, served at the URL in `metadata/en-US/privacy_url.txt` once pushed |
+| Privacy policy | `../PRIVACY.md`, served at `privacy_url` in `listing.yml` once pushed |
 | Automation | `../../fastlane/Fastfile`, `../../.github/workflows/appstore.yml`, `../../.github/workflows/appstore-submit.yml` |
 
-The folder layout is fastlane `deliver`'s, so the same files feed both the manual and the automated route.
+Everything but the screenshots is in `listing.yml`; fastlane reads it for both the manual and the automated route.
 
 ## The listing, field by field
 
@@ -24,13 +23,13 @@ The folder layout is fastlane `deliver`'s, so the same files feed both the manua
 | SKU | `sizer-mac` (any unique string; never shown) | |
 | Primary category | Productivity | |
 | Secondary category | Utilities | |
-| Promotional text | `metadata/en-US/promotional_text.txt` | 170 |
-| Description | `metadata/en-US/description.txt` | 4000 |
-| Keywords | `metadata/en-US/keywords.txt` | 100 |
+| Promotional text | `promotional_text:` in `listing.yml` | 170 |
+| Description | `description:` in `listing.yml` | 4000 |
+| Keywords | `keywords:` in `listing.yml` | 100 |
 | Support URL | https://perfectink.org/apps/sizer.html | |
 | Marketing URL | https://perfectink.org/apps/sizer.html | |
 | Privacy Policy URL | https://github.com/perfect-ink/sizer/blob/main/docs/PRIVACY.md | |
-| What's New | `metadata/en-US/release_notes.txt` | 4000 |
+| What's New | `release_notes:` in `listing.yml` | 4000 |
 | Copyright | 2026 Perfect Ink (use the legal name on the developer account if it differs) | |
 | Version | matches the tag, e.g. 1.5.2 | |
 | Build | uploaded by the App Store workflow; build number = workflow run number | |
@@ -44,8 +43,8 @@ The folder layout is fastlane `deliver`'s, so the same files feed both the manua
 | Advertising identifier | No | |
 | Pricing | your call; Free or a one-time price. Availability: all territories | |
 | Release | Automatically after approval (what the submit lane sets) | |
-| App Review contact | name and email in `review.yml`; the required phone comes from the `APP_REVIEW_PHONE` secret | |
-| Review notes | `notes:` in `review.yml` | 4000 |
+| App Review contact | name and email under `review:` in `listing.yml`; the required phone comes from the `APP_REVIEW_PHONE` secret | |
+| Review notes | `review: notes:` in `listing.yml` | 4000 |
 
 ## One-time setup the API cannot do
 
@@ -61,7 +60,7 @@ Do these once in the browser, in this order.
 4. **App Privacy** on the app's page: "Data Not Collected", then Publish. There is no public API for this.
 5. **Age rating**: answer the questionnaire (all None / No). It persists across versions.
 6. **Pricing and Availability**: choose the price and territories.
-7. **App Review contact phone number**: set the `APP_REVIEW_PHONE` repository secret (`gh secret set APP_REVIEW_PHONE`). Everything else in App Review Information comes from `review.yml`.
+7. **App Review contact phone number**: set the `APP_REVIEW_PHONE` repository secret (`gh secret set APP_REVIEW_PHONE`). Everything else in App Review Information comes from `listing.yml`.
 8. Push `docs/PRIVACY.md` to `main` so the privacy policy URL resolves before review starts.
 
 ## The automated flow
@@ -81,7 +80,7 @@ Edit the text files and push a new tag, or rerun the Submit workflow, to update 
 
 ## Things to know before you submit
 
-- **The name "Sizer" is probably taken.** The App Store already lists two iOS apps called exactly "Sizer", and names are unique across the store. If App Store Connect refuses it when you create the record, use a longer unique name and put the same string in `metadata/en-US/name.txt`. Suggestions within 30 characters: "Sizer: Window Snapping", "Sizer – Snap Windows", "Sizer Window Manager". The bundle name inside the app stays "Sizer".
+- **The name "Sizer" is probably taken.** The App Store already lists two iOS apps called exactly "Sizer", and names are unique across the store. If App Store Connect refuses it when you create the record, use a longer unique name and put the same string in `name:` in `listing.yml`. Suggestions within 30 characters: "Sizer: Window Snapping", "Sizer – Snap Windows", "Sizer Window Manager". The bundle name inside the app stays "Sizer".
 - **Team ID.** Sizer's App Store build belongs to team `XS9W9A8FWM`, which is the Makefile's default `TEAM_ID`. The certificates in the `.p12`, the provisioning profile and the App Store Connect API key must all come from that team. The DMG workflow's `APPLE_TEAM_ID` secret is separate and goes with its Developer ID certificate.
 - **Certificates on this Mac.** The keychain here has both the Apple Distribution and the 3rd Party Mac Developer Installer identities for team `XS9W9A8FWM`, so `make appstore PROFILE=…` can build and sign the `.pkg` locally once the provisioning profile is downloaded. The CI path needs both in `MAS_CERTIFICATE_P12`.
 - **Test the sandboxed build before review.** The sandbox has not been exercised on a real Mac. Install the processed build from TestFlight, grant Accessibility, and confirm that snapping, global shortcuts and Launch at Login all work. That is also exactly what the reviewer will do.

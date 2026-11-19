@@ -2,8 +2,10 @@
 # uploads it to App Store Connect, where it shows up under TestFlight and can
 # be submitted for review. The Developer ID DMG is release.yml's job.
 #
-#   tag push (v1.5.2)  -> upload 1.5.2, build number = this workflow's run number
-#   manual run (tag)   -> same, for an existing tag (e.g. a retry after a rejection)
+#   tag push (v1.5.2)  -> upload 1.5.2 (build number = this workflow's run number),
+#                         wait for Apple to process it, then submit it for review;
+#                         it goes live automatically once approved
+#   manual run (tag)   -> same, for an existing tag; untick "submit" to stop at upload
 #   PR touching this   -> dry run: build only if the secrets are there, no upload
 #
 # Everything comes from team XS9W9A8FWM (the Makefile's TEAM_ID): the
@@ -21,7 +23,8 @@
 #
 # After the upload, the listing in docs/app-store/ (description, keywords, screenshots,
 # review notes…) is pushed to the same version with fastlane deliver, so App Store
-# Connect always matches the repo. Submitting for review is appstore-submit.yml.
+# Connect always matches the repo. appstore-submit.yml re-submits by hand (e.g. after
+# a rejection, without uploading a new build).
 name: App Store
 
 on:
@@ -32,6 +35,10 @@ on:
       tag:
         description: Existing tag to build and upload
         required: true
+      submit:
+        description: Submit for review once processed
+        type: boolean
+        default: true
   pull_request:
     paths: [.github/workflows/appstore.yml, Makefile, Sizer.entitlements, fastlane/**]
 
@@ -49,6 +56,10 @@ concurrency:
 jobs:
   appstore:
     runs-on: macos-26
+    outputs:
+      uploaded: ${{ steps.upload.outputs.uploaded }}
+      version: ${{ steps.upload.outputs.version }}
+      build: ${{ steps.upload.outputs.build }}
     env:
       TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
       HAS_SECRETS: ${{ secrets.MAS_CERTIFICATE_P12 != '' && secrets.MAS_PROVISIONING_PROFILE != '' && secrets.APP_STORE_CONNECT_API_KEY != '' }}
@@ -113,6 +124,7 @@ jobs:
           path: dist/Sizer.pkg
 
       - name: Upload to App Store Connect
+        id: upload
         if: env.HAS_SECRETS == 'true' && env.TAG != ''
         env:
           API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
@@ -125,6 +137,7 @@ jobs:
           xcrun altool --validate-app -f dist/Sizer.pkg -t macos --apiKey "$API_KEY_ID" --apiIssuer "$ISSUER_ID"
           xcrun altool --upload-app   -f dist/Sizer.pkg -t macos --apiKey "$API_KEY_ID" --apiIssuer "$ISSUER_ID"
           echo "::notice::Uploaded Sizer $VERSION ($GITHUB_RUN_NUMBER). It appears in App Store Connect once processing finishes."
+          { echo "uploaded=true"; echo "version=$VERSION"; echo "build=$GITHUB_RUN_NUMBER"; } >> "$GITHUB_OUTPUT"
 
       - name: Upload listing (metadata and screenshots)
         if: env.HAS_SECRETS == 'true' && env.TAG != ''
@@ -136,4 +149,36 @@ jobs:
           FASTLANE_SKIP_UPDATE_CHECK: "1"
         run: |
           fastlane mac metadata version:"$VERSION"
-          echo "::notice::Listing for $VERSION uploaded. Once the build has processed, run the App Store Submit workflow to send it to review."
+          echo "::notice::Listing for $VERSION uploaded."
+
+  submit:
+    # Only real releases go to review: tag pushes, and manual runs that leave "submit" on.
+    needs: appstore
+    if: needs.appstore.outputs.uploaded == 'true' && (github.event_name == 'push' || inputs.submit)
+    # Waiting on Apple's processing is mostly sleep, so it runs on the cheaper Linux runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
+      APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      VERSION: ${{ needs.appstore.outputs.version }}
+      BUILD: ${{ needs.appstore.outputs.build }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || '' }}
+
+      - name: Install fastlane
+        run: sudo gem install fastlane --no-document
+
+      - name: Wait for processing
+        run: fastlane mac wait_for_build version:"$VERSION" build:"$BUILD"
+
+      - name: Submit for review
+        run: |
+          fastlane mac submit version:"$VERSION" build:"$BUILD"
+          echo "::notice::Sizer $VERSION ($BUILD) is in App Review and will be released automatically once approved."
+

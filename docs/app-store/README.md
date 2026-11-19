@@ -70,11 +70,12 @@ Do these once in the browser, in this order.
 git tag v1.5.2 && git push origin v1.5.2
 ```
 
-1. **App Store workflow** builds the sandboxed universal `.pkg`, validates and uploads it, then runs `fastlane mac metadata version:1.5.2`, which creates version 1.5.2 in App Store Connect if needed and uploads the description, keywords, URLs, promo text, What's New, categories, copyright, review notes and all six screenshots (replacing any old ones).
-2. Wait for the build to finish processing (TestFlight tab, usually 10 to 30 minutes).
-3. **App Store Submit workflow** (Actions → App Store Submit → Run, version `1.5.2`): re-syncs the listing, attaches the newest processed build for that version (or the build number you give), answers the export-compliance and IDFA questions, and submits for review with automatic release on approval.
+1. **App Store workflow, build job** builds the sandboxed universal `.pkg`, validates and uploads it, then runs `fastlane mac metadata version:1.5.2`, which creates version 1.5.2 in App Store Connect if needed and uploads the description, keywords, URLs, promo text, What's New, categories, copyright, review notes and all six screenshots (replacing any old ones).
+2. **Submit job** (same run) waits for Apple to finish processing that exact build (usually 10 to 30 minutes, up to 90), then attaches it, answers the export-compliance and IDFA questions and submits for review with automatic release on approval. Nothing to click: approval puts it on the Mac App Store.
 
-Locally the same two steps are `make metadata VERSION=1.5.2` and `make submit VERSION=1.5.2`, which need `brew install fastlane` and the `APP_STORE_CONNECT_API_KEY_*` variables described at the top of `fastlane/Fastfile`. The GitHub macOS runners ship with fastlane, so the workflows install nothing.
+A manual run of the App Store workflow has a "submit" box; untick it to stop after the upload (a TestFlight-only build). **App Store Submit** (Actions → App Store Submit → Run) re-submits an already uploaded version without building, e.g. after fixing listing text for a rejection.
+
+Locally the same two steps are `make metadata VERSION=1.5.2` and `make submit VERSION=1.5.2`, which need `brew install fastlane` and the `APP_STORE_CONNECT_API_KEY_*` variables described at the top of `fastlane/Fastfile`. The macOS runners ship with fastlane; the submit job runs on Linux and installs it with `gem`.
 
 Edit the text files and push a new tag, or rerun the Submit workflow, to update the listing. Screenshots are regenerated with `make screenshots`, which renders the app's real Settings window (compiled with `-D APPSTORE`) and draws the rest, so they track UI changes.
 

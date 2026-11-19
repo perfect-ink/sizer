@@ -8,6 +8,7 @@
 #   APP_STORE_CONNECT_API_KEY_KEY (its base64, with APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64=true)
 #
 #   fastlane mac metadata version:1.5.2            listing text + screenshots for 1.5.2
+#   fastlane mac wait_for_build version:1.5.2 build:42   block until that upload has finished processing
 #   fastlane mac submit version:1.5.2 [build:42]   attach the build (latest processed one by default) and submit
 
 default_platform(:mac)
@@ -35,6 +36,30 @@ platform :mac do
     version = options[:version] || UI.user_error!("Pass version:1.5.2")
     app_store_connect_api_key
     deliver(listing_options(version))
+  end
+
+  desc "Wait until an uploaded build has finished processing (TestFlight shows it as ready). Fails if Apple rejects it in processing."
+  lane :wait_for_build do |options|
+    version = options[:version] || UI.user_error!("Pass version:1.5.2")
+    number  = (options[:build] || UI.user_error!("Pass build:42")).to_s
+    timeout = (options[:timeout_minutes] || 90).to_i * 60
+    app_store_connect_api_key
+    app = Spaceship::ConnectAPI::App.find(CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)) ||
+          UI.user_error!("No App Store Connect app record for this bundle ID yet")
+    deadline = Time.now + timeout
+    loop do
+      build = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: version, build_number: number,
+                                               platform: Spaceship::ConnectAPI::Platform::MAC_OS).first
+      state = build&.processing_state || "NOT YET LISTED"
+      UI.message("#{version} (#{number}): #{state}")
+      break if state == Spaceship::ConnectAPI::Build::ProcessingState::VALID
+      if [Spaceship::ConnectAPI::Build::ProcessingState::FAILED,
+          Spaceship::ConnectAPI::Build::ProcessingState::INVALID].include?(state)
+        UI.user_error!("Apple rejected #{version} (#{number}) during processing; check the email from App Store Connect")
+      end
+      UI.user_error!("#{version} (#{number}) still not processed after #{timeout / 60} minutes") if Time.now > deadline
+      sleep 60
+    end
   end
 
   desc "Attach a processed build to the version and submit it for review. Uses the newest processed build for that version unless build: is given."

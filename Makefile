@@ -56,12 +56,14 @@ build:
 # upload. Needs an "Apple Distribution" and a "3rd Party Mac Developer Installer"
 # (a.k.a. "Mac Installer Distribution") identity in the keychain, and a Mac App
 # Store provisioning profile for the bundle ID. The release workflow runs this.
-#   make appstore TEAM_ID=K2F4FTM2XQ PROFILE=path/to/Sizer.provisionprofile
+#   make appstore PROFILE=path/to/Sizer.provisionprofile
 MAS_MIN_OS  := 13.0
 MAS_DIR     := $(BUILD_DIR)/appstore
 MAS_BUNDLE  := $(MAS_DIR)/$(APP).app
 MAS_PKG     := $(DIST_DIR)/$(APP).pkg
 BUNDLE_ID    = $(shell $(PLIST_BUDDY) -c "Print :CFBundleIdentifier" Info.plist)
+# The Apple Developer team that owns org.perfectink.sizer on the App Store.
+TEAM_ID            ?= XS9W9A8FWM
 APP_IDENTITY       ?= Apple Distribution
 INSTALLER_IDENTITY ?= 3rd Party Mac Developer Installer
 

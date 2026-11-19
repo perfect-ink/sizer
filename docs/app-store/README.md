@@ -56,7 +56,7 @@ Do these once in the browser, in this order.
    - An *Apple Distribution* certificate and a *Mac Installer Distribution* certificate, exported together as one `.p12`.
    - A *Mac App Store* provisioning profile for `org.perfectink.sizer`.
    - A team-level App Store Connect API key (Users and Access → Integrations) with the *App Manager* role; it uploads builds and also pushes the listing.
-2. **Repository secrets** (the seven listed at the top of `.github/workflows/appstore.yml`).
+2. **Repository secrets** (the six listed at the top of `.github/workflows/appstore.yml`).
 3. **App record** (App Store Connect → Apps → +): platform macOS, name, primary language English (U.S.), bundle ID `org.perfectink.sizer`, SKU `sizer-mac`. Fastlane cannot create this record.
 4. **App Privacy** on the app's page: "Data Not Collected", then Publish. There is no public API for this.
 5. **Age rating**: answer the questionnaire (all None / No). It persists across versions.
@@ -81,8 +81,8 @@ Edit the text files and push a new tag, or rerun the Submit workflow, to update 
 ## Things to know before you submit
 
 - **The name "Sizer" is probably taken.** The App Store already lists two iOS apps called exactly "Sizer", and names are unique across the store. If App Store Connect refuses it when you create the record, use a longer unique name and put the same string in `metadata/en-US/name.txt`. Suggestions within 30 characters: "Sizer: Window Snapping", "Sizer – Snap Windows", "Sizer Window Manager". The bundle name inside the app stays "Sizer".
-- **Team ID.** The Apple Distribution identity in this Mac's keychain belongs to team `XS9W9A8FWM`, while the Makefile comment uses `K2F4FTM2XQ` as its example. The `APPLE_TEAM_ID` secret, the certificates in the `.p12`, the provisioning profile and the API key must all come from the same team.
-- **Installer certificate.** The keychain here has an Apple Distribution identity but no Mac Installer Distribution identity, so `make appstore` cannot run locally yet. The CI path needs both in `MAS_CERTIFICATE_P12`.
+- **Team ID.** Sizer's App Store build belongs to team `XS9W9A8FWM`, which is the Makefile's default `TEAM_ID`. The certificates in the `.p12`, the provisioning profile and the App Store Connect API key must all come from that team. The DMG workflow's `APPLE_TEAM_ID` secret is separate and goes with its Developer ID certificate.
+- **Certificates on this Mac.** The keychain here has both the Apple Distribution and the 3rd Party Mac Developer Installer identities for team `XS9W9A8FWM`, so `make appstore PROFILE=…` can build and sign the `.pkg` locally once the provisioning profile is downloaded. The CI path needs both in `MAS_CERTIFICATE_P12`.
 - **Test the sandboxed build before review.** The sandbox has not been exercised on a real Mac. Install the processed build from TestFlight, grant Accessibility, and confirm that snapping, global shortcuts and Launch at Login all work. That is also exactly what the reviewer will do.
 - **Minimum macOS.** The App Store build targets macOS 13 (it needs `SMAppService`). The product page still says "12 or later"; update it or the listing will contradict the site.
 - **Review notes mention the first-launch alert.** Reviewers often test without granting Accessibility; the alert with the "Open System Settings" button is what keeps that from being a rejection.

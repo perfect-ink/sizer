@@ -6,7 +6,7 @@ Everything App Store Connect asks for, ready to paste or to push with fastlane.
 |---|---|
 | Listing text (name, subtitle, promo, description, keywords, URLs, What's New) | `metadata/en-US/*.txt` |
 | Copyright and categories | `metadata/copyright.txt`, `metadata/primary_category.txt`, `metadata/secondary_category.txt` |
-| Notes and contact for App Review | `metadata/review_information/` |
+| Notes and contact for App Review | `review.yml` (one file) |
 | Screenshots, 2880×1800 (six) | `screenshots/en-US/` (regenerate with `make screenshots`) |
 | Privacy policy | `../PRIVACY.md`, served at the URL in `metadata/en-US/privacy_url.txt` once pushed |
 | Automation | `../../fastlane/Fastfile`, `../../.github/workflows/appstore.yml`, `../../.github/workflows/appstore-submit.yml` |
@@ -44,8 +44,8 @@ The folder layout is fastlane `deliver`'s, so the same files feed both the manua
 | Advertising identifier | No | |
 | Pricing | your call; Free or a one-time price. Availability: all territories | |
 | Release | Automatically after approval (what the submit lane sets) | |
-| App Review contact | first/last name and email in `metadata/review_information/`; **phone number is required and not in the repo** | |
-| Review notes | `metadata/review_information/notes.txt` | 4000 |
+| App Review contact | name and email in `review.yml`; the required phone comes from the `APP_REVIEW_PHONE` secret | |
+| Review notes | `notes:` in `review.yml` | 4000 |
 
 ## One-time setup the API cannot do
 
@@ -56,12 +56,12 @@ Do these once in the browser, in this order.
    - An *Apple Distribution* certificate and a *Mac Installer Distribution* certificate, exported together as one `.p12`.
    - A *Mac App Store* provisioning profile for `org.perfectink.sizer`.
    - A team-level App Store Connect API key (Users and Access → Integrations) with the *App Manager* role; it uploads builds and also pushes the listing.
-2. **Repository secrets** (the six listed at the top of `.github/workflows/appstore.yml`).
+2. **Repository secrets** (the seven listed at the top of `.github/workflows/appstore.yml`).
 3. **App record** (App Store Connect → Apps → +): platform macOS, name, primary language English (U.S.), bundle ID `org.perfectink.sizer`, SKU `sizer-mac`. Fastlane cannot create this record.
 4. **App Privacy** on the app's page: "Data Not Collected", then Publish. There is no public API for this.
 5. **Age rating**: answer the questionnaire (all None / No). It persists across versions.
 6. **Pricing and Availability**: choose the price and territories.
-7. **App Review contact phone number** (App Information → App Review Information). Everything else in that section is filled by the sync.
+7. **App Review contact phone number**: set the `APP_REVIEW_PHONE` repository secret (`gh secret set APP_REVIEW_PHONE`). Everything else in App Review Information comes from `review.yml`.
 8. Push `docs/PRIVACY.md` to `main` so the privacy policy URL resolves before review starts.
 
 ## The automated flow

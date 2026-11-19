@@ -20,6 +20,7 @@
 #   APP_STORE_CONNECT_API_KEY     base64 of the AuthKey_*.p8
 #   APP_STORE_CONNECT_API_KEY_ID  the key's ID
 #   APP_STORE_CONNECT_ISSUER_ID   the issuer ID shown above the keys list
+#   APP_REVIEW_PHONE              App Review contact phone (kept out of the public repo)
 #
 # After the upload, the listing in docs/app-store/ (description, keywords, screenshots,
 # review notes…) is pushed to the same version with fastlane deliver, so App Store
@@ -146,6 +147,7 @@ jobs:
           APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
           APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_REVIEW_PHONE: ${{ secrets.APP_REVIEW_PHONE }}
           FASTLANE_SKIP_UPDATE_CHECK: "1"
         run: |
           fastlane mac metadata version:"$VERSION"
@@ -163,6 +165,7 @@ jobs:
       APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
       APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
       APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_REVIEW_PHONE: ${{ secrets.APP_REVIEW_PHONE }}
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       VERSION: ${{ needs.appstore.outputs.version }}
       BUILD: ${{ needs.appstore.outputs.build }}

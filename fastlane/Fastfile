@@ -11,10 +11,29 @@
 #   fastlane mac wait_for_build version:1.5.2 build:42   block until that upload has finished processing
 #   fastlane mac submit version:1.5.2 [build:42]   attach the build (latest processed one by default) and submit
 
+require "yaml"
+
 default_platform(:mac)
 
 METADATA_PATH    = "docs/app-store/metadata"
 SCREENSHOTS_PATH = "docs/app-store/screenshots"
+
+# App Review contact and notes, from one file. APP_REVIEW_PHONE (a secret in CI)
+# overrides the phone so it never has to be committed.
+def review_information
+  review = YAML.load_file(File.expand_path("../docs/app-store/review.yml", __dir__))
+  phone = ENV["APP_REVIEW_PHONE"].to_s.strip
+  phone = review["phone"].to_s.strip if phone.empty?
+  UI.important("No App Review phone number: set the APP_REVIEW_PHONE secret") if phone.empty?
+  {
+    first_name: review["first_name"],
+    last_name: review["last_name"],
+    email_address: review["email"],
+    phone_number: phone,
+    demo_required: review["demo_required"] || false,
+    notes: review["notes"].to_s.strip,
+  }.reject { |_, v| v.is_a?(String) && v.empty? }
+end
 
 def listing_options(version)
   {
@@ -22,6 +41,7 @@ def listing_options(version)
     app_version: version,
     metadata_path: METADATA_PATH,
     screenshots_path: SCREENSHOTS_PATH,
+    app_review_information: review_information,
     overwrite_screenshots: true,
     skip_binary_upload: true,
     force: true,                          # no HTML preview prompt (CI)

@@ -36,6 +36,7 @@ jobs:
           APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
           APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_REVIEW_PHONE: ${{ secrets.APP_REVIEW_PHONE }}
           FASTLANE_SKIP_UPDATE_CHECK: "1"
           VERSION: ${{ inputs.version }}
           BUILD: ${{ inputs.build }}

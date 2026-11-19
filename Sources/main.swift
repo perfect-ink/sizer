@@ -704,7 +704,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func resetAndOpenAccessibilitySettings() {
         let reset = Process()
         reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-        reset.arguments = ["reset", "Accessibility", Bundle.main.bundleIdentifier ?? "com.sizer.app"]
+        reset.arguments = ["reset", "Accessibility", Bundle.main.bundleIdentifier ?? "org.perfectink.sizer"]
         try? reset.run()
         reset.waitUntilExit()
 
@@ -809,6 +809,8 @@ func makeSizerIcon(dim: CGFloat = 18) -> NSImage {
 }
 
 // MARK: - Entry point
+
+migrateLegacySettings()
 
 let app      = NSApplication.shared
 let delegate = AppDelegate()

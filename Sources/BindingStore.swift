@@ -89,3 +89,30 @@ final class BindingStore {
         set { UserDefaults.standard.set(newValue, forKey: "launchAtLogin") }
     }
 }
+
+// MARK: - Settings migration
+
+/// Bundle ID Sizer used up to 1.5.1, before it moved to org.perfectink.sizer.
+private let legacyBundleID = "com.sizer.app" as CFString
+
+/// Copies settings (shortcuts, animation speed, toggles) saved under the old bundle ID
+/// into the current one, once, so updating doesn't reset them. Runs before anything
+/// reads UserDefaults. Keys already set under the new ID win. Accessibility access and
+/// the login item are tied to the bundle ID by macOS and can't be carried over.
+func migrateLegacySettings() {
+    let defaults = UserDefaults.standard
+    let doneKey = "migratedFromLegacyBundleID"
+    guard Bundle.main.bundleIdentifier != legacyBundleID as String,
+          !defaults.bool(forKey: doneKey) else { return }
+    defaults.set(true, forKey: doneKey)
+
+    guard let keys = CFPreferencesCopyKeyList(legacyBundleID, kCFPreferencesCurrentUser,
+                                              kCFPreferencesAnyHost) as? [String],
+          let old = CFPreferencesCopyMultiple(keys as CFArray, legacyBundleID,
+                                              kCFPreferencesCurrentUser,
+                                              kCFPreferencesAnyHost) as? [String: Any]
+    else { return }
+    for (key, value) in old where defaults.object(forKey: key) == nil {
+        defaults.set(value, forKey: key)
+    }
+}

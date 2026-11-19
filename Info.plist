@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string>Sizer</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.sizer.app</string>
+	<string>org.perfectink.sizer</string>
 	<key>CFBundleName</key>
 	<string>Sizer</string>
 	<key>CFBundlePackageType</key>

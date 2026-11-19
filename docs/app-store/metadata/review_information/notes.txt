@@ -13,4 +13,4 @@ HOW TO TEST
 ABOUT THE BUILD
 No account or sign-in. No network access of any kind. No data is collected. The app is sandboxed; it uses only public APIs: the Accessibility API (AXUIElement) to position windows, RegisterEventHotKey for global shortcuts, and SMAppService for Launch at Login. Purchases: none.
 
-Contact for questions during review: hello@perfctink.com
+Contact for questions during review: hello@perfectink.org

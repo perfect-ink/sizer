@@ -31,4 +31,4 @@ If this policy changes, the updated version will be published at the same addres
 
 ## Contact
 
-Questions about this policy: hello@perfctink.com
+Questions about this policy: hello@perfectink.org

@@ -31,7 +31,7 @@ The folder layout is fastlane `deliver`'s, so the same files feed both the manua
 | Marketing URL | https://perfectink.org/apps/sizer.html | |
 | Privacy Policy URL | https://github.com/perfect-ink/sizer/blob/main/docs/PRIVACY.md | |
 | What's New | `metadata/en-US/release_notes.txt` | 4000 |
-| Copyright | 2026 Perfct Ink (use the legal name on the developer account if it differs) | |
+| Copyright | 2026 Perfect Ink (use the legal name on the developer account if it differs) | |
 | Version | matches the tag, e.g. 1.5.2 | |
 | Build | uploaded by the App Store workflow; build number = workflow run number | |
 | Screenshots | the six PNGs in `screenshots/en-US/`, in file-name order | 1 to 10 |

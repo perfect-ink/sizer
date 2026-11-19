@@ -386,6 +386,9 @@ func arrangeFrontAppWindowsGrid() {
 }
 
 private func hideFinderSidebarsIfNeeded(windowCount: Int) {
+    #if APPSTORE
+    return  // Sandboxed: scripting Finder needs an Apple Events exception App Review rejects.
+    #else
     guard BindingStore.shared.finderSidebarHideEnabled else { return }
     let threshold = BindingStore.shared.finderSidebarHideThreshold
     guard threshold > 0,
@@ -395,6 +398,7 @@ private func hideFinderSidebarsIfNeeded(windowCount: Int) {
     task.launchPath = "/usr/bin/osascript"
     task.arguments = ["-e", "tell application \"Finder\" to set sidebar width of every window to 0"]
     try? task.run()
+    #endif
 }
 
 // MARK: - Carbon hotkey callback (C-compatible global function)
@@ -702,11 +706,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// different code signature, which shows as enabled but is never trusted), re-registers
     /// the app so it appears fresh in the list, then opens System Settings.
     func resetAndOpenAccessibilitySettings() {
+        // tccutil can't run inside the sandbox; App Store builds have one stable signature anyway.
+        #if !APPSTORE
         let reset = Process()
         reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-        reset.arguments = ["reset", "Accessibility", Bundle.main.bundleIdentifier ?? "com.sizer.app"]
+        reset.arguments = ["reset", "Accessibility", Bundle.main.bundleIdentifier ?? "org.perfectink.sizer"]
         try? reset.run()
         reset.waitUntilExit()
+        #endif
 
         let opts = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(opts)

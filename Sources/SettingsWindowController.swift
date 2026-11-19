@@ -247,6 +247,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return v
     }
 
+    #if APPSTORE
+    static let finderSidebarAvailable = false
+    #else
+    static let finderSidebarAvailable = true
+    #endif
+
     private func buildGeneralTab() -> NSView {
         let v = NSView()
 
@@ -377,9 +383,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             finderWindowsLabel.leadingAnchor.constraint(equalTo: finderField.trailingAnchor, constant: 4),
             finderWindowsLabel.centerYAnchor.constraint(equalTo: finderCheck.centerYAnchor),
 
-            launchCheck.topAnchor.constraint(equalTo: finderCheck.bottomAnchor, constant: 14),
+            launchCheck.topAnchor.constraint(equalTo: Self.finderSidebarAvailable ? finderCheck.bottomAnchor
+                                                                                  : speedNote.bottomAnchor,
+                                             constant: 14),
             launchCheck.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 16),
         ])
+
+        // The App Store build is sandboxed and can't script Finder, so the option is hidden there.
+        if !Self.finderSidebarAvailable {
+            [finderLabel, finderCheck, finderField, finderWindowsLabel].forEach { $0.isHidden = true }
+        }
 
         return v
     }

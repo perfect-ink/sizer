@@ -1,0 +1,16 @@
+Sizer is a menu bar window manager. It has no Dock icon and no main window. After launch, look for its icon (an "S" with four arrows) at the right end of the menu bar.
+
+ACCESSIBILITY PERMISSION
+Like every window manager on macOS, Sizer needs Accessibility access to move and resize other apps' windows and to respond to global keyboard shortcuts. On first launch Sizer shows an alert explaining this, with an "Open System Settings" button. Please enable Sizer under System Settings → Privacy & Security → Accessibility. The Settings window's General tab shows whether access has been granted.
+
+HOW TO TEST
+1. Open a Finder window.
+2. Press Control-Option-Command-Left Arrow. The window snaps to the left half of the screen.
+3. Press Control-Option-Command-Right Arrow for the right half, or Control-Option-Command-M to maximize.
+4. Click the menu bar icon: every action is listed there with its shortcut, and clicking an item performs it on the front window.
+5. Choose Settings… from that menu. The Shortcuts tab lets you click any shortcut and press new keys; the General tab has the animation speed and Launch at Login.
+
+ABOUT THE BUILD
+No account or sign-in. No network access of any kind. No data is collected. The app is sandboxed; it uses only public APIs: the Accessibility API (AXUIElement) to position windows, RegisterEventHotKey for global shortcuts, and SMAppService for Launch at Login. Purchases: none.
+
+Contact for questions during review: hello@perfctink.com

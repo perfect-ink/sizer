@@ -1,0 +1,44 @@
+# Sends a version that's already uploaded to App Store Connect to App Review:
+# re-syncs the listing from docs/app-store/, attaches the newest processed build for
+# that version (or the one given), answers the export-compliance questions and
+# submits. Run it once the build from the App Store workflow shows as processed
+# (App Store Connect → TestFlight), usually 10–30 minutes after the upload.
+#
+# Uses the APP_STORE_CONNECT_* secrets described in appstore.yml. The one-time
+# setup that the API can't do (creating the app record, App Privacy answers, age
+# rating, price) is listed in docs/app-store/README.md.
+name: App Store Submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to submit (e.g. 1.5.2); must already have an uploaded build
+        required: true
+      build:
+        description: Build number to attach (blank = newest processed build for that version)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Submit for review
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          [ -n "$APP_STORE_CONNECT_API_KEY_KEY" ] || { echo "::error::APP_STORE_CONNECT_* secrets aren't set; see .github/workflows/appstore.yml"; exit 1; }
+          if [ -n "$BUILD" ]; then fastlane mac submit version:"$VERSION" build:"$BUILD"; else fastlane mac submit version:"$VERSION"; fi

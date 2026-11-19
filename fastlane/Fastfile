@@ -1,0 +1,57 @@
+# App Store Connect automation for the listing. The binary itself is built and
+# uploaded by .github/workflows/appstore.yml (make appstore + altool); these lanes
+# push everything else from docs/app-store/ through the App Store Connect API.
+#
+# Auth is the same API key the workflow uses, read from the environment:
+#   APP_STORE_CONNECT_API_KEY_KEY_ID, APP_STORE_CONNECT_API_KEY_ISSUER_ID and either
+#   APP_STORE_CONNECT_API_KEY_KEY_FILEPATH (path to the .p8) or
+#   APP_STORE_CONNECT_API_KEY_KEY (its base64, with APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64=true)
+#
+#   fastlane mac metadata version:1.5.2            listing text + screenshots for 1.5.2
+#   fastlane mac submit version:1.5.2 [build:42]   attach the build (latest processed one by default) and submit
+
+default_platform(:mac)
+
+METADATA_PATH    = "docs/app-store/metadata"
+SCREENSHOTS_PATH = "docs/app-store/screenshots"
+
+def listing_options(version)
+  {
+    platform: "osx",
+    app_version: version,
+    metadata_path: METADATA_PATH,
+    screenshots_path: SCREENSHOTS_PATH,
+    overwrite_screenshots: true,
+    skip_binary_upload: true,
+    force: true,                          # no HTML preview prompt (CI)
+    run_precheck_before_submit: false,    # precheck can't use an API key
+    precheck_include_in_app_purchases: false,
+  }
+end
+
+platform :mac do
+  desc "Upload the App Store listing (metadata + screenshots) for the given version. Creates the version in App Store Connect if needed."
+  lane :metadata do |options|
+    version = options[:version] || UI.user_error!("Pass version:1.5.2")
+    app_store_connect_api_key
+    deliver(listing_options(version))
+  end
+
+  desc "Attach a processed build to the version and submit it for review. Uses the newest processed build for that version unless build: is given."
+  lane :submit do |options|
+    version = options[:version] || UI.user_error!("Pass version:1.5.2")
+    app_store_connect_api_key
+    build = options[:build] || latest_testflight_build_number(platform: "osx", version: version)
+    UI.message("Submitting #{version} (#{build}) for review")
+    deliver(listing_options(version).merge(
+      build_number: build.to_s,
+      submit_for_review: true,
+      automatic_release: true,
+      submission_information: {
+        export_compliance_uses_encryption: false,
+        add_id_info_uses_idfa: false,
+        content_rights_contains_third_party_content: false,
+      }
+    ))
+  end
+end

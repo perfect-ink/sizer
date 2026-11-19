@@ -12,7 +12,7 @@ DIST_BUNDLE := $(DIST_DIR)/$(APP).app
 INST_BUNDLE := $(INST_DIR)/$(APP).app
 ICON_ICNS   := $(RES_DIR)/$(APP).icns
 
-.PHONY: dev build open close install uninstall reinstall icon clean all test bump
+.PHONY: appstore screenshots metadata submit dev build open close install uninstall reinstall icon clean all test bump
 
 all: open
 
@@ -51,6 +51,68 @@ build:
 	@cp $(ICON_ICNS) $(DIST_BUNDLE)/Contents/Resources/$(APP).icns
 	@echo "✓ $(DIST_BUNDLE)"
 
+# Build, sign and package for the Mac App Store: a universal, sandboxed build with
+# the Finder sidebar option compiled out (APPSTORE), as dist/Sizer.pkg ready for
+# upload. Needs an "Apple Distribution" and a "3rd Party Mac Developer Installer"
+# (a.k.a. "Mac Installer Distribution") identity in the keychain, and a Mac App
+# Store provisioning profile for the bundle ID. The release workflow runs this.
+#   make appstore TEAM_ID=K2F4FTM2XQ PROFILE=path/to/Sizer.provisionprofile
+MAS_MIN_OS  := 13.0
+MAS_DIR     := $(BUILD_DIR)/appstore
+MAS_BUNDLE  := $(MAS_DIR)/$(APP).app
+MAS_PKG     := $(DIST_DIR)/$(APP).pkg
+BUNDLE_ID    = $(shell $(PLIST_BUDDY) -c "Print :CFBundleIdentifier" Info.plist)
+APP_IDENTITY       ?= Apple Distribution
+INSTALLER_IDENTITY ?= 3rd Party Mac Developer Installer
+
+appstore: $(ICON_ICNS)
+	@[ -n "$(TEAM_ID)" ] || { echo "Set TEAM_ID (Apple Developer team ID)"; exit 1; }
+	@[ -f "$(PROFILE)" ] || { echo "Set PROFILE to the Mac App Store .provisionprofile"; exit 1; }
+	@rm -rf $(MAS_DIR) $(MAS_PKG)
+	@mkdir -p $(MAS_BUNDLE)/Contents/MacOS $(MAS_BUNDLE)/Contents/Resources $(DIST_DIR)
+	@echo "→ Building (App Store, universal)…"
+	swiftc $(SRC) $(FLAGS) -O -D APPSTORE -target arm64-apple-macos$(MAS_MIN_OS)  -o $(MAS_DIR)/$(APP)-arm64
+	swiftc $(SRC) $(FLAGS) -O -D APPSTORE -target x86_64-apple-macos$(MAS_MIN_OS) -o $(MAS_DIR)/$(APP)-x86_64
+	lipo -create $(MAS_DIR)/$(APP)-arm64 $(MAS_DIR)/$(APP)-x86_64 -output $(MAS_BUNDLE)/Contents/MacOS/$(APP)
+	@cp Info.plist $(MAS_BUNDLE)/Contents/Info.plist
+	@plutil -replace LSMinimumSystemVersion -string $(MAS_MIN_OS) $(MAS_BUNDLE)/Contents/Info.plist
+	@[ -z "$(VERSION)" ] || plutil -replace CFBundleShortVersionString -string "$(VERSION)" $(MAS_BUNDLE)/Contents/Info.plist
+	@[ -z "$(BUILD_NUMBER)" ] || plutil -replace CFBundleVersion -string "$(BUILD_NUMBER)" $(MAS_BUNDLE)/Contents/Info.plist
+	@cp $(ICON_ICNS) $(MAS_BUNDLE)/Contents/Resources/$(APP).icns
+	@cp "$(PROFILE)" $(MAS_BUNDLE)/Contents/embedded.provisionprofile
+	@cp $(APP).entitlements $(MAS_DIR)/signing.entitlements
+	@$(PLIST_BUDDY) -c "Add :com.apple.application-identifier string $(TEAM_ID).$(BUNDLE_ID)" $(MAS_DIR)/signing.entitlements
+	@$(PLIST_BUDDY) -c "Add :com.apple.developer.team-identifier string $(TEAM_ID)" $(MAS_DIR)/signing.entitlements
+	@echo "→ Signing…"
+	codesign --force --timestamp --entitlements $(MAS_DIR)/signing.entitlements --sign "$(APP_IDENTITY)" $(MAS_BUNDLE)
+	codesign --verify --strict --verbose=2 $(MAS_BUNDLE)
+	productbuild --component $(MAS_BUNDLE) /Applications --sign "$(INSTALLER_IDENTITY)" $(MAS_PKG)
+	@echo "✓ $(MAS_PKG)"
+
+# Render the App Store screenshots (docs/app-store/screenshots/en-US, 2880×1800) from the real
+# Settings window plus drawn desktops. See Scripts/generate-screenshots.swift.
+screenshots:
+	@echo "→ Rendering screenshots…"
+	@swiftc -D APPSTORE Scripts/generate-screenshots.swift \
+		Sources/SettingsWindowController.swift Sources/BindingStore.swift Sources/SnapGeometry.swift \
+		-framework Cocoa -framework Carbon -framework ApplicationServices -o /tmp/sizer-screenshots
+	@/tmp/sizer-screenshots docs/app-store/screenshots/en-US
+	@rm -f /tmp/sizer-screenshots
+
+# Push the App Store listing (docs/app-store/metadata + docs/app-store/screenshots) to App Store
+# Connect, and submit a processed build for review. Needs fastlane and the
+# APP_STORE_CONNECT_API_KEY_* variables described at the top of fastlane/Fastfile.
+# The App Store workflows run these for you on a tag push and on manual dispatch.
+#   make metadata VERSION=1.5.2
+#   make submit VERSION=1.5.2 [BUILD_NUMBER=42]
+metadata:
+	@[ -n "$(VERSION)" ] || { echo "Set VERSION (e.g. 1.5.2)"; exit 1; }
+	fastlane mac metadata version:$(VERSION)
+
+submit:
+	@[ -n "$(VERSION)" ] || { echo "Set VERSION (e.g. 1.5.2)"; exit 1; }
+	fastlane mac submit version:$(VERSION) $(if $(BUILD_NUMBER),build:$(BUILD_NUMBER),)
+
 # Build for production and install.
 install: build
 	@echo "→ Installing to $(INST_BUNDLE)…"
@@ -87,6 +149,7 @@ clean:
 test:
 	@echo "→ Type-checking…"
 	@swiftc -typecheck $(SRC)
+	@swiftc -typecheck -D APPSTORE $(SRC)
 	@set -e; test_bin=$$(mktemp /tmp/sizer-animation-tests.XXXXXX); \
 	trap 'rm -f "$$test_bin"' EXIT; \
 	swiftc Sources/Animation.swift Tests/AnimationTests.swift -o "$$test_bin"; \

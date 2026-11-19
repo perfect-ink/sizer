@@ -1,0 +1,6 @@
+Sizer's first release on the Mac App Store.
+
+• Snap the front window to a half, a quarter, the center, or the full screen
+• Auto Arrange every window of the front app in columns or two rows, or maximize them all
+• Move the front window to the next or previous display
+• Change any shortcut, pick the animation speed, and launch at login

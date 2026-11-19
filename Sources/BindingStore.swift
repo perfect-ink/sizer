@@ -23,7 +23,23 @@ struct HotkeyDef {
 
 final class BindingStore {
     static let shared = BindingStore()
-    private init() {}
+    private init() { migrateLegacyDefaults() }
+
+    /// Sizer's bundle ID was com.sizer.app before 1.5.2. Copies the shortcuts and
+    /// settings saved under it, once, so updating doesn't reset them. (The sandboxed
+    /// App Store build can't read another app's defaults, and is a fresh install anyway.)
+    private func migrateLegacyDefaults() {
+        #if !APPSTORE
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "migratedFromComSizerApp") else { return }
+        defaults.set(true, forKey: "migratedFromComSizerApp")
+        guard Bundle.main.bundleIdentifier != "com.sizer.app",
+              let old = UserDefaults.standard.persistentDomain(forName: "com.sizer.app") else { return }
+        for (key, value) in old where defaults.object(forKey: key) == nil {
+            defaults.set(value, forKey: key)
+        }
+        #endif
+    }
 
     let definitions: [HotkeyDef] = [
         HotkeyDef(id:  1, label: "Left Half",            snap: .left,         defaultKeyCode: 123, defaultModifiers: UInt32(controlKey | optionKey | cmdKey)),

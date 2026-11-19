@@ -1,0 +1,1 @@
+window,snap,tile,resize,manager,layout,shortcut,hotkey,arrange,split,screen,organize,tiling,halves

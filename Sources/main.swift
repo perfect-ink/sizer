@@ -41,20 +41,6 @@ private func frontWindow(for axApp: AXUIElement) -> AXUIElement? {
 
 private var pendingAnimations: [DispatchWorkItem] = []
 
-/// AX resizes are anchored at the window's top-left corner. When the left or top
-/// edge is doing most of the moving, reposition first and then resize toward the
-/// stationary opposite edge. Right/bottom-edge resizes use the inverse order.
-private func shouldRepositionBeforeResizing(from start: CGRect, to end: CGRect) -> Bool {
-    let edgeMovements = [
-        (amount: abs(end.minX - start.minX), movesFromTopLeft: true),
-        (amount: abs(end.maxX - start.maxX), movesFromTopLeft: false),
-        (amount: abs(end.minY - start.minY), movesFromTopLeft: true),
-        (amount: abs(end.maxY - start.maxY), movesFromTopLeft: false)
-    ]
-
-    return edgeMovements.max(by: { $0.amount < $1.amount })?.movesFromTopLeft ?? false
-}
-
 private func setFrame(_ axWindow: AXUIElement, position: CGPoint, size: CGSize,
                       resizeFirst: Bool) {
     var pos = position
@@ -79,6 +65,31 @@ private func setFrame(_ axWindow: AXUIElement, position: CGPoint, size: CGSize,
     }
 }
 
+private func settle(_ axWindow: AXUIElement, snap: WindowSnap, endSize: CGSize,
+                    visibleFrame v: CGRect, primaryH: CGFloat) {
+    settleSnapFrame(
+        snap: snap, endSize: endSize, visibleFrame: v, primaryH: primaryH,
+        readSize: {
+            var ref: CFTypeRef?
+            var size = endSize
+            if AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &ref) == .success,
+               let ref { AXValueGetValue(ref as! AXValue, .cgSize, &size) }
+            return size
+        },
+        setSize: { size in
+            var sz = size
+            if let value = AXValueCreate(.cgSize, &sz) {
+                AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, value)
+            }
+        },
+        setPosition: { position in
+            var pos = position
+            if let value = AXValueCreate(.cgPoint, &pos) {
+                AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value)
+            }
+        })
+}
+
 /// Animate size and position simultaneously to the snap target.
 /// On the final frame, corrects position if the window clamped to a minimum size.
 private func animateSnap(_ axWindow: AXUIElement,
@@ -95,17 +106,7 @@ private func animateSnap(_ axWindow: AXUIElement,
 
     if duration == 0 {
         setFrame(axWindow, position: targetPos, size: endSize, resizeFirst: resizeFirst)
-        // Correct position if size was clamped to a minimum
-        var actualSzRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &actualSzRef)
-        var actualSize = endSize
-        if let r = actualSzRef { AXValueGetValue(r as! AXValue, .cgSize, &actualSize) }
-        if actualSize.width != endSize.width || actualSize.height != endSize.height {
-            var correctedPos = axOrigin(snap: snap, size: actualSize, visibleFrame: v, primaryH: primaryH)
-            if let pv = AXValueCreate(.cgPoint, &correctedPos) {
-                AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, pv)
-            }
-        }
+        settle(axWindow, snap: snap, endSize: endSize, visibleFrame: v, primaryH: primaryH)
         return
     }
 
@@ -115,20 +116,16 @@ private func animateSnap(_ axWindow: AXUIElement,
         let pos = CGPoint(x: currentPos.x + (targetPos.x - currentPos.x) * t,
                           y: currentPos.y + (targetPos.y - currentPos.y) * t)
         setFrame(axWindow, position: pos, size: sz, resizeFirst: resizeFirst)
+        // The window may have clamped its height on the way (see settleSnapFrame).
+        // Fix it on the final frame so a quick follow-up snap can't cancel the fix.
+        if t == 1 {
+            settle(axWindow, snap: snap, endSize: endSize, visibleFrame: v, primaryH: primaryH)
+        }
     }
 
-    // After the animation settles, re-read the actual size. If the window clamped to a
-    // minimum size, reposition so the anchor edge stays flush.
+    // Check again once the app has caught up, for apps that apply sizes late.
     let correction = DispatchWorkItem {
-        var actualSzRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &actualSzRef)
-        var actualSize = endSize
-        if let r = actualSzRef { AXValueGetValue(r as! AXValue, .cgSize, &actualSize) }
-        guard actualSize.width != endSize.width || actualSize.height != endSize.height else { return }
-        var correctedPos = axOrigin(snap: snap, size: actualSize, visibleFrame: v, primaryH: primaryH)
-        if let pv = AXValueCreate(.cgPoint, &correctedPos) {
-            AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, pv)
-        }
+        settle(axWindow, snap: snap, endSize: endSize, visibleFrame: v, primaryH: primaryH)
     }
     pendingAnimations.append(correction)
     DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.1, execute: correction)

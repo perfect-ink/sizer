@@ -60,3 +60,36 @@ func snapEndSize(snap: WindowSnap, currentSize: CGSize, visibleFrame v: CGRect) 
     }
     return desired
 }
+
+/// AX resizes are anchored at the window's top-left corner. When the left or top
+/// edge is doing most of the moving, reposition first and then resize toward the
+/// stationary opposite edge. Right/bottom-edge resizes use the inverse order.
+func shouldRepositionBeforeResizing(from start: CGRect, to end: CGRect) -> Bool {
+    let edgeMovements = [
+        (amount: abs(end.minX - start.minX), movesFromTopLeft: true),
+        (amount: abs(end.maxX - start.maxX), movesFromTopLeft: false),
+        (amount: abs(end.minY - start.minY), movesFromTopLeft: true),
+        (amount: abs(end.maxY - start.maxY), movesFromTopLeft: false)
+    ]
+
+    return edgeMovements.max(by: { $0.amount < $1.amount })?.movesFromTopLeft ?? false
+}
+
+/// Finish a snap once the window has been sent to `endSize` at its target origin.
+///
+/// A resize applied before the window reaches its target origin can be clamped
+/// because the window would run off the screen (e.g. Center → Left Half grows the
+/// window downward while it is still centred). Now that the window sits at its
+/// target origin, retry the size. If it still doesn't fit, the window has a minimum
+/// (or maximum) size, so move it to keep the snap's anchor edge flush.
+func settleSnapFrame(snap: WindowSnap, endSize: CGSize, visibleFrame v: CGRect, primaryH: CGFloat,
+                     readSize: () -> CGSize,
+                     setSize: (CGSize) -> Void,
+                     setPosition: (CGPoint) -> Void) {
+    var actual = readSize()
+    guard actual != endSize else { return }
+    setSize(endSize)
+    actual = readSize()
+    guard actual != endSize else { return }
+    setPosition(axOrigin(snap: snap, size: actual, visibleFrame: v, primaryH: primaryH))
+}

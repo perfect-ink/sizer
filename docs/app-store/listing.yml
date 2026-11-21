@@ -1,0 +1,95 @@
+# Sizer's whole App Store listing in one file: the text App Store Connect shows,
+# the categories, and the App Review contact and notes. fastlane/Fastfile reads it
+# and pushes it with every release, so App Store Connect always matches this file.
+# Screenshots are the one thing elsewhere: screenshots/en-US/ (`make screenshots`).
+#
+# Limits are Apple's; the Fastfile refuses to upload anything longer.
+
+locale: en-US
+
+name: "Sizer"                      # 30, unique across the whole store
+subtitle: "Snap windows with a keystroke"  # 30
+
+# 170. Can change any time without a new build or review.
+promotional_text: "Snap the front window to a half, a quarter, or the full screen with one shortcut. Tidy every window of an app at once. Menu bar only. No account, no tracking."
+
+# 4000
+description: |
+  Sizer snaps the window you are working in to exactly where you want it, with a keystroke. Halves, quarters, centered, or full screen: press the shortcut and the window moves. No dragging edges, no hunting for the green button.
+
+  It lives in your menu bar, stays out of your Dock, and gets out of the way.
+
+  SNAP WITH SHORTCUTS
+  • Left, right, top, or bottom half
+  • Any of the four quarters
+  • Maximize to fill the screen
+  • Center at 75% or 50% of the screen
+
+  The default shortcuts use Control-Option-Command and Control-Option-Shift with the arrow keys, so they stay clear of the shortcuts in the apps you already use.
+
+  TIDY A WHOLE APP AT ONCE
+  • Auto Arrange Columns puts every window of the front app side by side
+  • Auto Arrange 2 Rows lays them out in a two-row grid
+  • Maximize All Windows fills the screen with each of them
+
+  MADE FOR MORE THAN ONE DISPLAY
+  • Send the front window to the next or previous display, and it keeps its size
+  • Every snap uses the visible area of the display the window is already on, so nothing ends up behind the Dock or the menu bar
+
+  MAKE IT YOURS
+  • Change any shortcut: click it, press the new keys, done
+  • Reset to the defaults at any time
+  • Choose how quickly windows animate, or turn animation off
+  • Pause Sizer from the menu bar without quitting it
+  • Launch at login
+
+  PRIVATE BY DESIGN
+  Sizer never connects to the internet, has no account, and collects nothing. Your preferences stay on your Mac.
+
+  Sizer needs Accessibility permission to move and resize windows, as every window manager on macOS does. It asks the first time you launch it, and you can grant access in System Settings → Privacy & Security → Accessibility.
+
+# 100, comma separated, no spaces needed
+keywords: "window,snap,tile,resize,manager,layout,shortcut,hotkey,arrange,split,screen,organize,tiling,halves"
+
+# "What's New" for this version. 4000
+release_notes: |
+  Sizer's first release on the Mac App Store.
+
+  • Snap the front window to a half, a quarter, the center, or the full screen
+  • Auto Arrange every window of the front app in columns or two rows, or maximize them all
+  • Move the front window to the next or previous display
+  • Change any shortcut, pick the animation speed, and launch at login
+
+support_url: https://perfectink.org/apps/sizer.html
+marketing_url: https://perfectink.org/apps/sizer.html
+privacy_url: https://github.com/perfect-ink/sizer/blob/main/docs/PRIVACY.md
+
+copyright: "2026 Perfect Ink"
+primary_category: PRODUCTIVITY
+secondary_category: UTILITIES
+
+# App Review Information. The repo is public, so leave phone blank and set the
+# APP_REVIEW_PHONE repository secret instead (it wins over this field).
+review:
+  first_name: Felix
+  last_name: Dantoni
+  email: hello@perfectink.org
+  phone: ""
+  demo_required: false   # no sign-in, so no demo account
+  notes: |
+    Sizer is a menu bar window manager. It has no Dock icon and no main window. After launch, look for its icon (an "S" with four arrows) at the right end of the menu bar.
+
+    ACCESSIBILITY PERMISSION
+    Like every window manager on macOS, Sizer needs Accessibility access to move and resize other apps' windows and to respond to global keyboard shortcuts. On first launch Sizer shows an alert explaining this, with an "Open System Settings" button. Please enable Sizer under System Settings → Privacy & Security → Accessibility. The Settings window's General tab shows whether access has been granted.
+
+    HOW TO TEST
+    1. Open a Finder window.
+    2. Press Control-Option-Command-Left Arrow. The window snaps to the left half of the screen.
+    3. Press Control-Option-Command-Right Arrow for the right half, or Control-Option-Command-M to maximize.
+    4. Click the menu bar icon: every action is listed there with its shortcut, and clicking an item performs it on the front window.
+    5. Choose Settings… from that menu. The Shortcuts tab lets you click any shortcut and press new keys; the General tab has the animation speed and Launch at Login.
+
+    ABOUT THE BUILD
+    No account or sign-in. No network access of any kind. No data is collected. The app is sandboxed; it uses only public APIs: the Accessibility API (AXUIElement) to position windows, RegisterEventHotKey for global shortcuts, and SMAppService for Launch at Login. Purchases: none.
+
+    Contact for questions during review: hello@perfectink.org

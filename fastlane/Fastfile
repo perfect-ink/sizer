@@ -1,0 +1,124 @@
+# App Store Connect automation for the listing. The binary itself is built and
+# uploaded by .github/workflows/appstore.yml (make appstore + altool); these lanes
+# push everything else from docs/app-store/ through the App Store Connect API.
+#
+# Auth is the same API key the workflow uses, read from the environment:
+#   APP_STORE_CONNECT_API_KEY_KEY_ID, APP_STORE_CONNECT_API_KEY_ISSUER_ID and either
+#   APP_STORE_CONNECT_API_KEY_KEY_FILEPATH (path to the .p8) or
+#   APP_STORE_CONNECT_API_KEY_KEY (its base64, with APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64=true)
+#
+#   fastlane mac metadata version:1.5.2            listing text + screenshots for 1.5.2
+#   fastlane mac wait_for_build version:1.5.2 build:42   block until that upload has finished processing
+#   fastlane mac submit version:1.5.2 [build:42]   attach the build (latest processed one by default) and submit
+
+require "yaml"
+require "tmpdir"
+
+default_platform(:mac)
+
+LISTING_FILE     = File.expand_path("../docs/app-store/listing.yml", __dir__)
+SCREENSHOTS_PATH = "docs/app-store/screenshots"
+
+# Apple's limits, checked before anything is sent so a long field fails here.
+LIMITS = { "name" => 30, "subtitle" => 30, "promotional_text" => 170, "keywords" => 100,
+           "description" => 4000, "release_notes" => 4000 }
+LOCALIZED = %w[name subtitle promotional_text description keywords release_notes
+               support_url marketing_url privacy_url]
+
+def listing
+  @listing ||= YAML.load_file(LISTING_FILE)
+end
+
+# App Review contact and notes. APP_REVIEW_PHONE (a secret in CI) overrides the
+# phone so it never has to be committed to the public repo.
+def review_information
+  review = listing["review"] || {}
+  phone = ENV["APP_REVIEW_PHONE"].to_s.strip
+  phone = review["phone"].to_s.strip if phone.empty?
+  UI.important("No App Review phone number: set the APP_REVIEW_PHONE secret") if phone.empty?
+  {
+    first_name: review["first_name"],
+    last_name: review["last_name"],
+    email_address: review["email"],
+    phone_number: phone,
+    demo_required: review["demo_required"] || false,
+    notes: review["notes"].to_s.strip,
+  }.reject { |_, v| v.is_a?(String) && v.empty? }
+end
+
+# Everything in docs/app-store/listing.yml, as deliver options.
+def listing_options(version)
+  locale = listing["locale"] || "en-US"
+  LIMITS.each do |key, max|
+    length = listing[key].to_s.strip.length
+    UI.user_error!("listing.yml #{key} is #{length} characters; App Store Connect allows #{max}") if length > max
+  end
+  text = LOCALIZED.to_h { |key| [key.to_sym, { locale => listing[key].to_s.strip }] }
+                  .reject { |_, v| v[locale].empty? }
+  text.merge(
+    platform: "osx",
+    app_version: version,
+    copyright: listing["copyright"].to_s.strip,
+    primary_category: listing["primary_category"].to_s.strip,
+    secondary_category: listing["secondary_category"].to_s.strip,
+    app_review_information: review_information,
+    metadata_path: Dir.mktmpdir,          # everything comes from listing.yml, not a metadata folder
+    screenshots_path: SCREENSHOTS_PATH,
+    overwrite_screenshots: true,
+    skip_binary_upload: true,
+    force: true,                          # no HTML preview prompt (CI)
+    run_precheck_before_submit: false,    # precheck can't use an API key
+    precheck_include_in_app_purchases: false,
+  )
+end
+
+platform :mac do
+  desc "Upload the App Store listing (metadata + screenshots) for the given version. Creates the version in App Store Connect if needed."
+  lane :metadata do |options|
+    version = options[:version] || UI.user_error!("Pass version:1.5.2")
+    app_store_connect_api_key
+    deliver(listing_options(version))
+  end
+
+  desc "Wait until an uploaded build has finished processing (TestFlight shows it as ready). Fails if Apple rejects it in processing."
+  lane :wait_for_build do |options|
+    version = options[:version] || UI.user_error!("Pass version:1.5.2")
+    number  = (options[:build] || UI.user_error!("Pass build:42")).to_s
+    timeout = (options[:timeout_minutes] || 90).to_i * 60
+    app_store_connect_api_key
+    app = Spaceship::ConnectAPI::App.find(CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)) ||
+          UI.user_error!("No App Store Connect app record for this bundle ID yet")
+    deadline = Time.now + timeout
+    loop do
+      build = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: version, build_number: number,
+                                               platform: Spaceship::ConnectAPI::Platform::MAC_OS).first
+      state = build&.processing_state || "NOT YET LISTED"
+      UI.message("#{version} (#{number}): #{state}")
+      break if state == Spaceship::ConnectAPI::Build::ProcessingState::VALID
+      if [Spaceship::ConnectAPI::Build::ProcessingState::FAILED,
+          Spaceship::ConnectAPI::Build::ProcessingState::INVALID].include?(state)
+        UI.user_error!("Apple rejected #{version} (#{number}) during processing; check the email from App Store Connect")
+      end
+      UI.user_error!("#{version} (#{number}) still not processed after #{timeout / 60} minutes") if Time.now > deadline
+      sleep 60
+    end
+  end
+
+  desc "Attach a processed build to the version and submit it for review. Uses the newest processed build for that version unless build: is given."
+  lane :submit do |options|
+    version = options[:version] || UI.user_error!("Pass version:1.5.2")
+    app_store_connect_api_key
+    build = options[:build] || latest_testflight_build_number(platform: "osx", version: version)
+    UI.message("Submitting #{version} (#{build}) for review")
+    deliver(listing_options(version).merge(
+      build_number: build.to_s,
+      submit_for_review: true,
+      automatic_release: true,
+      submission_information: {
+        export_compliance_uses_encryption: false,
+        add_id_info_uses_idfa: false,
+        content_rights_contains_third_party_content: false,
+      }
+    ))
+  end
+end

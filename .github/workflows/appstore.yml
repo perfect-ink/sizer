@@ -1,0 +1,187 @@
+# Builds the sandboxed Mac App Store version of Sizer (`make appstore`) and
+# uploads it to App Store Connect, where it shows up under TestFlight and can
+# be submitted for review. The Developer ID DMG is release.yml's job.
+#
+#   tag push (v1.5.2)  -> upload 1.5.2 (build number = this workflow's run number),
+#                         wait for Apple to process it, then submit it for review;
+#                         it goes live automatically once approved
+#   manual run (tag)   -> same, for an existing tag; untick "submit" to stop at upload
+#   PR touching this   -> dry run: build only if the secrets are there, no upload
+#
+# Everything comes from team XS9W9A8FWM (the Makefile's TEAM_ID): the
+# certificates, the profile and the API key. Repository secrets (skipped with
+# a warning until they're all set):
+#
+#   MAS_CERTIFICATE_P12           base64 of ONE .p12 holding both the
+#                                 "Apple Distribution" and the
+#                                 "Mac Installer Distribution" identities
+#   MAS_CERTIFICATE_PASSWORD      password of that .p12
+#   MAS_PROVISIONING_PROFILE      base64 of the Mac App Store profile for org.perfectink.sizer
+#   APP_STORE_CONNECT_API_KEY     base64 of the AuthKey_*.p8
+#   APP_STORE_CONNECT_API_KEY_ID  the key's ID
+#   APP_STORE_CONNECT_ISSUER_ID   the issuer ID shown above the keys list
+#   APP_REVIEW_PHONE              App Review contact phone (kept out of the public repo)
+#
+# After the upload, the listing in docs/app-store/ (description, keywords, screenshots,
+# review notes…) is pushed to the same version with fastlane deliver, so App Store
+# Connect always matches the repo. appstore-submit.yml re-submits by hand (e.g. after
+# a rejection, without uploading a new build).
+name: App Store
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and upload
+        required: true
+      submit:
+        description: Submit for review once processed
+        type: boolean
+        default: true
+  pull_request:
+    paths: [.github/workflows/appstore.yml, Makefile, Sizer.entitlements, fastlane/**]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: appstore-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  appstore:
+    runs-on: macos-26
+    outputs:
+      uploaded: ${{ steps.upload.outputs.uploaded }}
+      version: ${{ steps.upload.outputs.version }}
+      build: ${{ steps.upload.outputs.build }}
+    env:
+      TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
+      HAS_SECRETS: ${{ secrets.MAS_CERTIFICATE_P12 != '' && secrets.MAS_PROVISIONING_PROFILE != '' && secrets.APP_STORE_CONNECT_API_KEY != '' }}
+    steps:
+      - name: Check secrets
+        if: env.HAS_SECRETS != 'true'
+        run: echo "::warning::App Store secrets aren't all set; skipping. See the top of .github/workflows/appstore.yml."
+
+      - uses: actions/checkout@v5
+        if: env.HAS_SECRETS == 'true'
+        with:
+          ref: ${{ inputs.tag || '' }}
+
+      - name: Version
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          if [ -n "$TAG" ]; then VERSION="${TAG#v}"; else VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"; fi
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || { echo "::error::App Store versions must be like 1.5.2, got $VERSION"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Import certificates and profile
+        if: env.HAS_SECRETS == 'true'
+        env:
+          P12: ${{ secrets.MAS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MAS_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/mas.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/mas.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/mas.p12" -P "$P12_PASSWORD" -A -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/mas.p12"
+
+          APP_ID="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -m1 -E '"(Apple Distribution|3rd Party Mac Developer Application)' | sed -E 's/.*"(.*)"/\1/')"
+          INST_ID="$(security find-identity -v "$KEYCHAIN" | grep -m1 -E '"(3rd Party Mac Developer Installer|Mac Installer Distribution)' | sed -E 's/.*"(.*)"/\1/')"
+          [ -n "$APP_ID" ]  || { echo "::error::No Apple Distribution identity in MAS_CERTIFICATE_P12"; exit 1; }
+          [ -n "$INST_ID" ] || { echo "::error::No Mac Installer Distribution identity in MAS_CERTIFICATE_P12"; exit 1; }
+          echo "APP_IDENTITY=$APP_ID" >> "$GITHUB_ENV"
+          echo "INSTALLER_IDENTITY=$INST_ID" >> "$GITHUB_ENV"
+
+          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/Sizer.provisionprofile"
+          echo "PROFILE=$RUNNER_TEMP/Sizer.provisionprofile" >> "$GITHUB_ENV"
+
+      - name: Build, sign and package
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          make appstore PROFILE="$PROFILE" \
+            APP_IDENTITY="$APP_IDENTITY" INSTALLER_IDENTITY="$INSTALLER_IDENTITY" \
+            VERSION="$VERSION" BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+          pkgutil --check-signature dist/Sizer.pkg
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_SECRETS == 'true'
+        with:
+          name: Sizer-${{ env.VERSION }}-appstore
+          path: dist/Sizer.pkg
+
+      - name: Upload to App Store Connect
+        id: upload
+        if: env.HAS_SECRETS == 'true' && env.TAG != ''
+        env:
+          API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          # altool finds the key by ID in ~/.appstoreconnect/private_keys.
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$API_KEY" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
+          xcrun altool --validate-app -f dist/Sizer.pkg -t macos --apiKey "$API_KEY_ID" --apiIssuer "$ISSUER_ID"
+          xcrun altool --upload-app   -f dist/Sizer.pkg -t macos --apiKey "$API_KEY_ID" --apiIssuer "$ISSUER_ID"
+          echo "::notice::Uploaded Sizer $VERSION ($GITHUB_RUN_NUMBER). It appears in App Store Connect once processing finishes."
+          { echo "uploaded=true"; echo "version=$VERSION"; echo "build=$GITHUB_RUN_NUMBER"; } >> "$GITHUB_OUTPUT"
+
+      - name: Upload listing (metadata and screenshots)
+        if: env.HAS_SECRETS == 'true' && env.TAG != ''
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_REVIEW_PHONE: ${{ secrets.APP_REVIEW_PHONE }}
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+        run: |
+          fastlane mac metadata version:"$VERSION"
+          echo "::notice::Listing for $VERSION uploaded."
+
+  submit:
+    # Only real releases go to review: tag pushes, and manual runs that leave "submit" on.
+    needs: appstore
+    if: needs.appstore.outputs.uploaded == 'true' && (github.event_name == 'push' || inputs.submit)
+    # Waiting on Apple's processing is mostly sleep, so it runs on the cheaper Linux runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
+      APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_REVIEW_PHONE: ${{ secrets.APP_REVIEW_PHONE }}
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      VERSION: ${{ needs.appstore.outputs.version }}
+      BUILD: ${{ needs.appstore.outputs.build }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || '' }}
+
+      - name: Install fastlane
+        run: sudo gem install fastlane --no-document
+
+      - name: Wait for processing
+        run: fastlane mac wait_for_build version:"$VERSION" build:"$BUILD"
+
+      - name: Submit for review
+        run: |
+          fastlane mac submit version:"$VERSION" build:"$BUILD"
+          echo "::notice::Sizer $VERSION ($BUILD) is in App Review and will be released automatically once approved."
+

@@ -72,6 +72,11 @@ jobs:
       - name: Build
         run: |
           make build
+          # The release must run on both Apple silicon and Intel, back to macOS 12.
+          BIN="dist/$APP_NAME.app/Contents/MacOS/$APP_NAME"
+          lipo -archs "$BIN"
+          lipo "$BIN" -verify_arch arm64 x86_64
+          vtool -show-build "$BIN" | grep -E 'minos|platform'
 
       - name: Stamp version
         run: |
@@ -153,17 +158,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APP_NAME }}-${{ env.VERSION }}
-          path: dist/*
+          path: ${{ env.DMG }}
 
       - name: Attach to release
         if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Only the .dmg: dist/ also holds the built .app, which is a folder and can't be uploaded.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
+            gh release upload "$TAG" "$DMG" --clobber
           else
-            gh release create "$TAG" dist/* --title "$APP_NAME $VERSION" --generate-notes
+            gh release create "$TAG" "$DMG" --title "$APP_NAME $VERSION" --generate-notes
           fi
 
       - name: Rebuild perfectink.org

@@ -814,6 +814,8 @@ func makeSizerIcon(dim: CGFloat = 18) -> NSImage {
 
 // MARK: - Entry point
 
+migrateLegacySettings()
+
 let app      = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

@@ -12,7 +12,7 @@ DIST_BUNDLE := $(DIST_DIR)/$(APP).app
 INST_BUNDLE := $(INST_DIR)/$(APP).app
 ICON_ICNS   := $(RES_DIR)/$(APP).icns
 
-.PHONY: appstore screenshots metadata submit dev build open close install uninstall reinstall icon clean all test bump
+.PHONY: appstore appstore-secrets screenshots metadata submit dev build open close install uninstall reinstall icon clean all test bump
 
 all: open
 
@@ -90,6 +90,12 @@ appstore: $(ICON_ICNS)
 	codesign --verify --strict --verbose=2 $(MAS_BUNDLE)
 	productbuild --component $(MAS_BUNDLE) /Applications --sign "$(INSTALLER_IDENTITY)" $(MAS_PKG)
 	@echo "✓ $(MAS_PKG)"
+
+# Set every GitHub secret the App Store workflow needs, from this Mac's keychain and
+# the App Store Connect API (creates the provisioning profile if needed).
+#   make appstore-secrets            make appstore-secrets DRY_RUN=1
+appstore-secrets:
+	@DRY_RUN=$(DRY_RUN) Scripts/appstore-secrets.sh
 
 # Render the App Store screenshots (docs/app-store/screenshots/en-US, 2880×1800) from the real
 # Settings window plus drawn desktops. See Scripts/generate-screenshots.swift.

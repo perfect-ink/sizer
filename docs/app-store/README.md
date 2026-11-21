@@ -50,12 +50,11 @@ Everything but the screenshots is in `listing.yml`; fastlane reads it for both t
 
 Do these once in the browser, in this order.
 
-1. **Certificates and profile** (developer.apple.com → Certificates, IDs & Profiles)
+1. **Certificates and API key** (developer.apple.com → Certificates, IDs & Profiles)
    - App ID `org.perfectink.sizer` with the App Sandbox capability.
-   - An *Apple Distribution* certificate and a *Mac Installer Distribution* certificate, exported together as one `.p12`.
-   - A *Mac App Store* provisioning profile for `org.perfectink.sizer`.
-   - A team-level App Store Connect API key (Users and Access → Integrations) with the *App Manager* role; it uploads builds and also pushes the listing.
-2. **Repository secrets** (the seven listed at the top of `.github/workflows/appstore.yml`).
+   - An *Apple Distribution* and a *Mac Installer Distribution* certificate, installed in this Mac's keychain.
+   - A team-level App Store Connect API key (Users and Access → Integrations) with the *App Manager* role; download its `AuthKey_*.p8`. It uploads builds and also pushes the listing.
+2. **Repository secrets**: run `make appstore-secrets` (try `DRY_RUN=1` first). It exports just those two identities into a `.p12`, finds or creates the Mac App Store provisioning profile through the API, and sets all seven secrets listed at the top of `.github/workflows/appstore.yml`. It asks for the Issuer ID and the review phone; macOS asks to allow each key export.
 3. **App record** (App Store Connect → Apps → +): platform macOS, name, primary language English (U.S.), bundle ID `org.perfectink.sizer`, SKU `sizer-mac`. Fastlane cannot create this record.
 4. **App Privacy** on the app's page: "Data Not Collected", then Publish. There is no public API for this.
 5. **Age rating**: answer the questionnaire (all None / No). It persists across versions.
